@@ -1,3 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# VSCode / IDEs
+.vscode/
+.idea/
+
+# PyTorch / large artifacts (ensure not committed)
+checkpoints/
+artifacts/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

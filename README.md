@@ -18,37 +18,35 @@ Requires PyTorch 2.5 or later for Flash Attention and Flex Attention support
 
 Development for the repo is done in Python 3.10
 
-# Interface
+## System packages (inference runtime)
+For torchaudio resampling and audio I/O, install the following OS packages on Debian/Ubuntu-like images:
 
-A basic Gradio interface is provided to test out trained models. 
+- `ffmpeg`
+- `libsndfile1`
 
-For example, to create an interface for the [`stable-audio-open-1.0`](https://huggingface.co/stabilityai/stable-audio-open-1.0) model, once you've accepted the terms for the model on Hugging Face, you can run:
+Example:
 ```bash
-$ python3 ./run_gradio.py --pretrained-name stabilityai/stable-audio-open-1.0
+apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
 ```
 
-The `run_gradio.py` script accepts the following command line arguments:
+## Microservice (Minimal)
 
-- `--pretrained-name`
-  - Hugging Face repository name for a Stable Audio Tools model
-  - Will prioritize `model.safetensors` over `model.ckpt` in the repo
-  - Optional, used in place of `model-config` and `ckpt-path` when using pre-trained model checkpoints on Hugging Face
-- `--model-config`
-  - Path to the model config file for a local model
-- `--ckpt-path`
-  - Path to unwrapped model checkpoint file for a local model
-- `--pretransform-ckpt-path` 
-  - Path to an unwrapped pretransform checkpoint, replaces the pretransform in the model, useful for testing out fine-tuned decoders
-  - Optional
-- `--share`
-  - If true, a publicly shareable link will be created for the Gradio demo
-  - Optional
-- `--username` and `--password`
-  - Used together to set a login for the Gradio demo
-  - Optional
-- `--model-half`
-  - If true, the model weights to half-precision
-  - Optional
+This repo is configured to expose a minimal HTTP service.
+
+Run locally:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+- `GET /health` → `{ "status": "ok" }`
+- `GET /` → basic service metadata
+
+Docker:
+```bash
+docker build -t stable-audio-service .
+docker run --rm -p 8000:8000 stable-audio-service
+```
 
 # Training
 
