@@ -46,6 +46,9 @@ def _configure_logging() -> logging.Logger:
 
 logger = _configure_logging()
 
+# Optional simple bearer auth for /generate
+SERVICE_TOKEN = os.getenv("service_token", "").strip()
+
 
 @app.middleware("http")
 async def request_context_logging(request: Request, call_next):
@@ -98,7 +101,7 @@ async def on_startup() -> None:
 
         # Warmup: run a tiny generation to initialize code paths
         warmup_start = time.time_ns()
-        _ = _synthesize_silence_wav(duration_seconds=1, sample_rate_hz=DEFAULT_SAMPLE_RATE_HZ)
+        _ = _synthesize_tone_wav(duration_seconds=1, sample_rate_hz=DEFAULT_SAMPLE_RATE_HZ)
         warmup_ms = int((time.time_ns() - warmup_start) / 1_000_000)
         logger.info("warmup_complete", extra={"durationMs": warmup_ms})
 
@@ -121,21 +124,129 @@ class GenerateRequest(BaseModel):
     sample_rate_hz: Optional[int] = Field(default=DEFAULT_SAMPLE_RATE_HZ)
 
 
-def _synthesize_silence_wav(duration_seconds: int, sample_rate_hz: int) -> bytes:
-    """Return PCM16 mono WAV bytes of silence for the requested duration.
-
-    This is a placeholder to satisfy Task 3 acceptance (return audio bytes)
-    without integrating model inference yet.
-    """
+def _synthesize_tone_wav(duration_seconds: int, sample_rate_hz: int, *, frequency_hz: int = 440) -> bytes:
+    """Return PCM16 mono WAV bytes of an audible sine tone with fade in/out."""
+    duration_seconds = max(1, int(duration_seconds))
     num_samples = int(duration_seconds * sample_rate_hz)
-    silence = np.zeros(num_samples, dtype=np.int16)
+    t = np.arange(num_samples, dtype=np.float32) / float(sample_rate_hz)
+    amplitude = 0.316  # ~ -10 dBFS
+    tone = amplitude * np.sin(2 * np.pi * frequency_hz * t)
+    fade_samples = max(1, int(0.005 * sample_rate_hz))
+    envelope = np.ones(num_samples, dtype=np.float32)
+    envelope[:fade_samples] = np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
+    envelope[-fade_samples:] = np.linspace(1.0, 0.0, fade_samples, dtype=np.float32)
+    tone *= envelope
+    pcm16 = np.clip(tone * 32767.0, -32768, 32767).astype(np.int16)
     buffer = BytesIO()
     with wave.open(buffer, "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)  # 16-bit
         wav_file.setframerate(sample_rate_hz)
-        wav_file.writeframes(silence.tobytes())
+        wav_file.writeframes(pcm16.tobytes())
     return buffer.getvalue()
+
+
+def _lowpass_moving_average(x: np.ndarray, window: int) -> np.ndarray:
+    if window <= 1:
+        return x
+    kernel = np.ones(window, dtype=np.float32) / float(window)
+    return np.convolve(x, kernel, mode="same").astype(np.float32)
+
+
+def _highpass_simple(x: np.ndarray, window: int) -> np.ndarray:
+    return (x - _lowpass_moving_average(x, window)).astype(np.float32)
+
+
+def _envelope(length: int, sample_rate: int, attack_ms: float, release_ms: float) -> np.ndarray:
+    a = max(1, int(attack_ms * sample_rate / 1000.0))
+    r = max(1, int(release_ms * sample_rate / 1000.0))
+    env = np.ones(length, dtype=np.float32)
+    env[:a] = np.linspace(0.0, 1.0, a, dtype=np.float32)
+    env[-r:] = np.linspace(1.0, 0.0, r, dtype=np.float32)
+    return env
+
+
+def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: int, seed: Optional[int]) -> bytes:
+    """Procedural SFX synthesis driven by simple prompt keywords.
+    This is a lightweight placeholder to avoid silence/tone and provide
+    varied audio for E2E testing without heavy models.
+    """
+    rng = np.random.default_rng(seed if seed is not None else abs(hash(prompt)) % (2**32))
+    n = int(duration_seconds * sample_rate_hz)
+    out = np.zeros(n, dtype=np.float32)
+    t = np.arange(n, dtype=np.float32) / float(sample_rate_hz)
+
+    p = prompt.lower()
+
+    # Footsteps: bursts every ~0.35-0.55s
+    if any(k in p for k in ["footstep", "steps", "walking", "walk"]):
+        step_interval = rng.uniform(0.35, 0.55)
+        burst_len = int(0.03 * sample_rate_hz)
+        for start in np.arange(0.0, duration_seconds, step_interval):
+            s = int(start * sample_rate_hz)
+            e = min(n, s + burst_len)
+            if s >= n:
+                break
+            burst = rng.normal(0, 1, e - s).astype(np.float32)
+            burst = _highpass_simple(burst, window=int(0.003 * sample_rate_hz))
+            burst *= _envelope(e - s, sample_rate_hz, 3, 15) * rng.uniform(0.15, 0.35)
+            out[s:e] += burst
+
+    # Rustling: band-limited noise with slow amplitude modulation
+    if any(k in p for k in ["rustling", "leaves", "breeze", "cloth", "paper"]):
+        noise = rng.normal(0, 1, n).astype(np.float32)
+        noise = _lowpass_moving_average(noise, window=int(0.0015 * sample_rate_hz))
+        lfo = (0.5 + 0.5 * np.sin(2 * np.pi * rng.uniform(0.3, 0.8) * t)).astype(np.float32)
+        out += noise * lfo * 0.15
+
+    # Thud: single low-frequency decaying sine
+    if any(k in p for k in ["thud", "hit", "bump", "slam"]):
+        f = rng.uniform(60, 120)
+        env = np.exp(-t * rng.uniform(6, 10)).astype(np.float32)
+        out += 0.25 * np.sin(2 * np.pi * f * t).astype(np.float32) * env
+
+    # Whisper: high-passed noise low level
+    if any(k in p for k in ["whisper", "hush", "breath"]):
+        noise = rng.normal(0, 1, n).astype(np.float32)
+        hp = _highpass_simple(noise, window=int(0.004 * sample_rate_hz))
+        out += hp * 0.08
+
+    # Thunder: low rumble with random modulated components
+    if any(k in p for k in ["thunder", "rumble", "storm"]):
+        f1, f2 = rng.uniform(30, 60), rng.uniform(60, 90)
+        mod = (0.6 + 0.4 * rng.random(n, dtype=np.float32)).astype(np.float32)
+        rumble = (np.sin(2 * np.pi * f1 * t) + 0.5 * np.sin(2 * np.pi * f2 * t)).astype(np.float32)
+        out += 0.2 * rumble * mod
+
+    # Fire crackle: sparse short spikes
+    if any(k in p for k in ["crackling", "fire", "campfire"]):
+        num_spikes = int(duration_seconds * rng.uniform(8, 14))
+        spike_len = int(0.01 * sample_rate_hz)
+        for _ in range(num_spikes):
+            s = rng.integers(0, max(1, n - spike_len))
+            e = s + spike_len
+            spike = rng.normal(0, 1, spike_len).astype(np.float32)
+            spike = _highpass_simple(spike, window=int(0.001 * sample_rate_hz))
+            spike *= _envelope(spike_len, sample_rate_hz, 1, 8) * rng.uniform(0.1, 0.25)
+            out[s:e] += spike
+
+    # If no keyword matched, fall back to soft tone derived from prompt
+    if np.max(np.abs(out)) < 1e-6:
+        freq = 220 + (abs(hash(prompt)) % 6) * 110
+        out = 0.2 * np.sin(2 * np.pi * freq * t).astype(np.float32)
+
+    # Soft limiter and conversion
+    peak = np.max(np.abs(out)) + 1e-9
+    out = np.clip(out / peak, -1.0, 1.0) * 0.9
+    pcm16 = (out * 32767.0).astype(np.int16)
+
+    buf = BytesIO()
+    with wave.open(buf, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate_hz)
+        wav_file.writeframes(pcm16.tobytes())
+    return buf.getvalue()
 
 
 @app.get("/health")
@@ -151,7 +262,12 @@ def root() -> dict:
 
 
 @app.post("/generate")
-def generate_audio(payload: GenerateRequest, x_request_id: Optional[str] = Header(default=None)) -> Response:
+def generate_audio(payload: GenerateRequest, x_request_id: Optional[str] = Header(default=None), authorization: Optional[str] = Header(default=None)) -> Response:
+    # Enforce simple bearer token if configured
+    if SERVICE_TOKEN:
+        expected = f"Bearer {SERVICE_TOKEN}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
     # Validate supported format (wav only for MVP)
     requested_format = payload.format.lower()
     if requested_format != "wav":
@@ -161,15 +277,14 @@ def generate_audio(payload: GenerateRequest, x_request_id: Optional[str] = Heade
     if sample_rate <= 0 or sample_rate > 192000:
         raise HTTPException(status_code=400, detail="Invalid sample_rate_hz")
 
-    # Synthesize minimal valid audio bytes (silence) as a placeholder and time it
+    # Generate procedural SFX based on prompt (non-silent) and time it
     t0 = time.time_ns()
-    audio_bytes = _synthesize_silence_wav(payload.duration_seconds, sample_rate)
+    audio_bytes = _synthesize_sfx_bytes(payload.prompt, payload.duration_seconds, sample_rate, payload.seed)
     gen_ms = int((time.time_ns() - t0) / 1_000_000)
     if x_request_id:
         logger.info("generation_completed", extra={"requestId": x_request_id, "path": "/generate", "status": 200, "durationMs": gen_ms})
 
     headers = {}
-    # Middleware already adds X-Request-ID, but keep explicit propagation if provided
     if x_request_id:
         headers["X-Request-ID"] = x_request_id
 
