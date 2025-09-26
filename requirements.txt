@@ -10,7 +10,16 @@ huggingface_hub==0.25.2
 k-diffusion==0.1.1
 tqdm==4.66.5
 
-# Install stable-audio-tools from local directory
--e .
+# Core dependencies from stable-audio-tools package
+alias-free-torch==0.0.6
+auraloss==0.4.0
+descript-audio-codec==1.0.0
+einops
+einops-exts
+ema-pytorch==0.2.3
+encodec==0.1.1
+laion-clap==1.1.4
+local-attention==1.8.6
+prefigure==0.0.9
 
 
