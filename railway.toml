@@ -25,7 +25,7 @@ variables = {
   LOG_LEVEL = "INFO",
   PORT = "8000",
   # Stable Audio Microservice Configuration (Task 2)
-  SERVICE_TOKEN = "dev-stable-audio-token-2024",
+  SERVICE_TOKEN = "dev-stable-audio-token-2024"
   # HUGGING_FACE_HUB_TOKEN = "hf_your_actual_token_here"  # Required for model download
 }
 
@@ -35,6 +35,6 @@ variables = {
   LOG_LEVEL = "INFO",
   PORT = "8000",
   # Stable Audio Microservice Configuration (Task 2)
-  SERVICE_TOKEN = "prod-stable-audio-token-2024",
+  SERVICE_TOKEN = "prod-stable-audio-token-2024"
   # HUGGING_FACE_HUB_TOKEN = "hf_your_actual_token_here"  # Required for model download
 }
