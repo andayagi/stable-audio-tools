@@ -1,25 +1,25 @@
 fastapi==0.114.2
 uvicorn[standard]==0.31.1
 
-# Minimal runtime deps for inference + API (pinned)
+# Minimal runtime deps for inference + API
 torch>=2.6.0
 torchaudio>=2.6.0
-numpy==1.26.4
-safetensors==0.4.5
-huggingface_hub==0.25.2
-k-diffusion==0.1.1
-tqdm==4.66.5
+numpy>=1.23.0,<1.27.0
+safetensors>=0.4.0
+huggingface_hub>=0.25.0
+k-diffusion>=0.1.0
+tqdm>=4.66.0
 
-# Core dependencies from stable-audio-tools package
-alias-free-torch==0.0.6
-auraloss==0.4.0
-descript-audio-codec==1.0.0
+# Core dependencies from stable-audio-tools package (let pip resolve versions)
+alias-free-torch
+auraloss
+descript-audio-codec
 einops
 einops-exts
-ema-pytorch==0.2.3
-encodec==0.1.1
-laion-clap==1.1.4
-local-attention==1.8.6
-prefigure==0.0.9
+ema-pytorch
+encodec
+laion-clap
+local-attention
+prefigure
 
 
