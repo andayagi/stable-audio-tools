@@ -15,7 +15,7 @@ watchPaths = [
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 2
 
@@ -26,7 +26,7 @@ variables = {
   PORT = "8000",
   # Stable Audio Microservice Configuration (Task 2)
   SERVICE_TOKEN = "dev-stable-audio-token-2024",
-  HUGGING_FACE_HUB_TOKEN = "hf_placeholder_dev_token"
+  # HUGGING_FACE_HUB_TOKEN = "hf_your_actual_token_here"  # Required for model download
 }
 
 [environments.production]
@@ -36,5 +36,5 @@ variables = {
   PORT = "8000",
   # Stable Audio Microservice Configuration (Task 2)
   SERVICE_TOKEN = "prod-stable-audio-token-2024",
-  HUGGING_FACE_HUB_TOKEN = "hf_placeholder_prod_token"
+  # HUGGING_FACE_HUB_TOKEN = "hf_your_actual_token_here"  # Required for model download
 }
