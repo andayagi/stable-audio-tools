@@ -1,40 +1,93 @@
 [build]
 builder = "nixpacks"
 # Enable build caching for faster subsequent builds
-buildCommand = "echo 'Stable Audio Microservice build with nixpacks'"
+buildCommand = "echo 'Optimized build with nixpacks and caching enabled'"
 # Watch paths - only rebuild when these files/directories change
 watchPaths = [
-  "app/**",
-  "service/**", 
-  "stable_audio_tools/**",
+  "api/**",
+  "services/**", 
+  "utils/**",
+  "schemas/**",
+  "db/**",
+  "scripts/**",
   "requirements.txt",
-  "pyproject.toml",
-  "setup.py",
+  "requirements-prod.txt",
+  "main.py",
+  "run.py",
   "*.py"
 ]
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 60  # Reduced from 180 to 60 seconds
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 2
 
 [environments.development]
-variables = { 
-  ENVIRONMENT = "development",
-  LOG_LEVEL = "INFO",
-  PORT = "8000",
-  # Stable Audio Microservice Configuration (Task 2)
-  # SERVICE_TOKEN = "your-dev-token-here"  # Set via Railway dashboard
-  # HUGGING_FACE_HUB_TOKEN = "hf_your_token_here"  # Set via Railway dashboard
-}
+# Stable Audio Microservice Configuration (Task 2)
+# AUDIO_SVC_URL = "https://stable-audio-service-dev.railway.app"
+# AUDIO_SVC_TOKEN = "dev-stable-audio-token-2024"
+# STABLE_AUDIO_USE_SERVICE = "true"
+# AUDIO_SVC_TIMEOUT_SECONDS = "120"
+
+[environments.development.variables]
+ENVIRONMENT = "development"
+DB_ECHO = "true"
+BASE_URL = "https://devapi.midsummerr.com"
+CORS_ORIGINS = "https://midsummerr.com,https://www.midsummerr.com,https://api.midsummerr.com,https://stgapi.midsummerr.com,https://devapi.midsummerr.com,https://staging.midsummerr.com"
+# Database settings - INCREASED for better concurrency
+DB_POOL_SIZE = "10"
+DB_MAX_OVERFLOW = "20"
+DB_POOL_TIMEOUT = "120"
+# Web server optimization - INCREASED for concurrent requests
+WEB_CONCURRENCY = "2"
+# ML Model settings (moved to microservice)
+# TRANSFORMERS_CACHE = "/tmp/transformers_cache"
+# TORCH_HOME = "/tmp/torch_cache"
+# Audio generation timeout settings
+PIPELINE_TIMEOUT_SECONDS = "900"
+# Memory management settings
+PYTHONMALLOC = "malloc"
+PYTHONDEVMODE = "0"
+# Stable Audio Microservice Configuration (Task 2)
+AUDIO_SVC_URL = "https://stable-audio-service-dev.railway.app"
+AUDIO_SVC_TOKEN = "dev-stable-audio-token-2024"
+STABLE_AUDIO_USE_SERVICE = "true"
+AUDIO_SVC_TIMEOUT_SECONDS = "120"
 
 [environments.production]
-variables = { 
-  ENVIRONMENT = "production",
-  LOG_LEVEL = "INFO",
-  PORT = "8000",
-  # Stable Audio Microservice Configuration (Task 2)
-  # SERVICE_TOKEN = "your-prod-token-here"  # Set via Railway dashboard
-  # HUGGING_FACE_HUB_TOKEN = "hf_your_token_here"  # Set via Railway dashboard
-}
+# Stable Audio Microservice Configuration (Task 2)
+# AUDIO_SVC_URL = "https://stable-audio-service-prod.railway.app"
+# AUDIO_SVC_TOKEN = "prod-stable-audio-token-2024"
+# STABLE_AUDIO_USE_SERVICE = "true"
+# AUDIO_SVC_TIMEOUT_SECONDS = "120"
+
+[environments.production.variables]
+ENVIRONMENT = "production"
+DB_ECHO = "false"
+WEBHOOK_MONITORING_ENABLED = "true"
+BASE_URL = "https://api.midsummerr.com"
+CORS_ORIGINS = "https://midsummerr.com,https://www.midsummerr.com,https://api.midsummerr.com,https://stgapi.midsummerr.com,https://devapi.midsummerr.com,https://staging.midsummerr.com"
+# Database settings - INCREASED for production load
+DB_POOL_SIZE = "15"
+DB_MAX_OVERFLOW = "30"
+DB_POOL_TIMEOUT = "120"
+DB_POOL_RECYCLE = "300"
+# Web server optimization - INCREASED for production concurrency
+WEB_CONCURRENCY = "3"
+# ML Model settings (moved to microservice)
+# TRANSFORMERS_CACHE = "/tmp/transformers_cache"
+# TORCH_HOME = "/tmp/torch_cache"
+# Audio generation timeout settings
+PIPELINE_TIMEOUT_SECONDS = "900"
+# Memory management settings for production
+PYTHONMALLOC = "malloc"
+PYTHONDEVMODE = "0"
+# Process management settings
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+# Stable Audio Microservice Configuration (Task 2)
+AUDIO_SVC_URL = "https://stable-audio-service-prod.railway.app"
+AUDIO_SVC_TOKEN = "prod-stable-audio-token-2024"
+STABLE_AUDIO_USE_SERVICE = "true"
+AUDIO_SVC_TIMEOUT_SECONDS = "120"
