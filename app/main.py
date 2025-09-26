@@ -9,6 +9,10 @@ import json
 import time
 import uuid
 import logging
+import torch
+import torchaudio
+from stable_audio_tools.models.pretrained import get_pretrained_model
+from stable_audio_tools.inference.generation import generate_diffusion_cond
 
 
 app = FastAPI(title="Stable Audio Microservice", version="0.1.0")
@@ -82,28 +86,49 @@ async def request_context_logging(request: Request, call_next):
 
 
 _SERVICE_READY: bool = False
+_STABLE_AUDIO_MODEL = None
+_STABLE_AUDIO_MODEL_CONFIG = None
 
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    """Log model/service load time for observability.
-
-    For MVP we do not actually load a heavy model yet, but we keep the
-    structure to time initialization consistently.
-    """
-    global _SERVICE_READY
+    """Load Stable Audio model and initialize service."""
+    global _SERVICE_READY, _STABLE_AUDIO_MODEL, _STABLE_AUDIO_MODEL_CONFIG
     start_ns = time.time_ns()
     try:
-        # Placeholder for future model/weights load
-        # e.g., stable audio weights load and any caches
+        # Load Stable Audio Open model
+        logger.info("loading_stable_audio_model")
+        model_name = "stabilityai/stable-audio-open-1.0"
+        
+        # Check if HuggingFace token is available
+        hf_token = os.getenv("HUGGING_FACE_HUB_TOKEN")
+        if not hf_token:
+            logger.warning("HUGGING_FACE_HUB_TOKEN not set, model download may fail")
+        
+        # Load the pretrained model
+        _STABLE_AUDIO_MODEL, _STABLE_AUDIO_MODEL_CONFIG = get_pretrained_model(model_name)
+        
+        # Set device (prefer CUDA if available, fallback to CPU)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        _STABLE_AUDIO_MODEL = _STABLE_AUDIO_MODEL.to(device)
+        _STABLE_AUDIO_MODEL.eval()
+        
         model_load_ms = int((time.time_ns() - start_ns) / 1_000_000)
-        logger.info("startup_complete", extra={"durationMs": model_load_ms})
+        logger.info("model_loaded", extra={"durationMs": model_load_ms, "device": str(device), "model": model_name})
 
         # Warmup: run a tiny generation to initialize code paths
         warmup_start = time.time_ns()
-        _ = _synthesize_tone_wav(duration_seconds=1, sample_rate_hz=DEFAULT_SAMPLE_RATE_HZ)
-        warmup_ms = int((time.time_ns() - warmup_start) / 1_000_000)
-        logger.info("warmup_complete", extra={"durationMs": warmup_ms})
+        try:
+            # Test with a short sound effect generation
+            _ = _synthesize_sfx_bytes("footstep", 1, DEFAULT_SAMPLE_RATE_HZ, seed=42)
+            warmup_ms = int((time.time_ns() - warmup_start) / 1_000_000)
+            logger.info("warmup_complete", extra={"durationMs": warmup_ms})
+        except Exception as e:
+            logger.warning("warmup_failed", extra={"error": str(e)})
+            # Fallback to tone warmup if SFX fails
+            _ = _synthesize_tone_wav(duration_seconds=1, sample_rate_hz=DEFAULT_SAMPLE_RATE_HZ)
+            warmup_ms = int((time.time_ns() - warmup_start) / 1_000_000)
+            logger.info("fallback_warmup_complete", extra={"durationMs": warmup_ms})
 
         _SERVICE_READY = True
     except Exception:
@@ -144,6 +169,103 @@ def _synthesize_tone_wav(duration_seconds: int, sample_rate_hz: int, *, frequenc
         wav_file.setframerate(sample_rate_hz)
         wav_file.writeframes(pcm16.tobytes())
     return buffer.getvalue()
+
+
+def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: int, seed: Optional[int] = None) -> bytes:
+    """Generate sound effects using Stable Audio Open model and return WAV bytes."""
+    global _STABLE_AUDIO_MODEL, _STABLE_AUDIO_MODEL_CONFIG
+    
+    if _STABLE_AUDIO_MODEL is None or _STABLE_AUDIO_MODEL_CONFIG is None:
+        # Fallback to tone generation if model not loaded
+        logger.warning("stable_audio_model_not_loaded", extra={"prompt": prompt})
+        return _synthesize_tone_wav(duration_seconds, sample_rate_hz)
+    
+    try:
+        # Determine device
+        device = next(_STABLE_AUDIO_MODEL.parameters()).device
+        
+        # Prepare conditioning for the model
+        # Most Stable Audio models expect prompt and timing information
+        conditioning = {
+            "prompt": prompt,
+            "seconds_start": 0,
+            "seconds_total": duration_seconds
+        }
+        
+        # Calculate sample size based on model's expected format
+        model_sample_rate = _STABLE_AUDIO_MODEL_CONFIG.get("sample_rate", 44100)
+        audio_sample_size = int(duration_seconds * model_sample_rate)
+        
+        # Ensure sample size is compatible with model constraints
+        # Round to nearest power of 2 if needed, or use model's preferred size
+        min_size = _STABLE_AUDIO_MODEL_CONFIG.get("sample_size", audio_sample_size)
+        if audio_sample_size < min_size:
+            audio_sample_size = min_size
+        
+        # Set random seed if provided
+        if seed is not None:
+            torch.manual_seed(seed)
+        
+        # Generate audio using the diffusion model
+        with torch.no_grad():
+            # Generate audio tensor
+            audio_output = generate_diffusion_cond(
+                model=_STABLE_AUDIO_MODEL,
+                steps=50,  # Reduced steps for faster generation
+                cfg_scale=6.0,  # Classifier-free guidance scale
+                conditioning=conditioning,
+                sample_size=audio_sample_size,
+                sample_rate=model_sample_rate,
+                seed=seed if seed is not None else -1,
+                device=str(device)
+            )
+            
+            # Convert to numpy and ensure correct shape
+            audio_np = audio_output.squeeze().cpu().numpy()
+            
+            # If stereo, convert to mono by averaging channels
+            if audio_np.ndim > 1:
+                audio_np = np.mean(audio_np, axis=0)
+            
+            # Resample if necessary
+            if model_sample_rate != sample_rate_hz:
+                # Create resampler
+                resampler = torchaudio.transforms.Resample(
+                    orig_freq=model_sample_rate,
+                    new_freq=sample_rate_hz
+                )
+                audio_tensor = torch.from_numpy(audio_np).unsqueeze(0)
+                audio_tensor = resampler(audio_tensor)
+                audio_np = audio_tensor.squeeze().numpy()
+            
+            # Truncate or pad to exact duration
+            target_samples = int(duration_seconds * sample_rate_hz)
+            if len(audio_np) > target_samples:
+                audio_np = audio_np[:target_samples]
+            elif len(audio_np) < target_samples:
+                audio_np = np.pad(audio_np, (0, target_samples - len(audio_np)))
+            
+            # Normalize audio to prevent clipping
+            if np.max(np.abs(audio_np)) > 0:
+                audio_np = audio_np / np.max(np.abs(audio_np)) * 0.8
+            
+            # Convert to 16-bit PCM
+            pcm16 = np.clip(audio_np * 32767.0, -32768, 32767).astype(np.int16)
+            
+            # Create WAV file in memory
+            buffer = BytesIO()
+            with wave.open(buffer, "wb") as wav_file:
+                wav_file.setnchannels(1)  # Mono
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(sample_rate_hz)
+                wav_file.writeframes(pcm16.tobytes())
+            
+            return buffer.getvalue()
+            
+    except Exception as e:
+        logger.error("sfx_generation_failed", extra={"prompt": prompt, "error": str(e)})
+        # Fallback to tone generation on any error
+        return _synthesize_tone_wav(duration_seconds, sample_rate_hz)
 
 
 @app.get("/health")

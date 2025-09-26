@@ -1,0 +1,40 @@
+[build]
+builder = "nixpacks"
+# Enable build caching for faster subsequent builds
+buildCommand = "echo 'Stable Audio Microservice build with nixpacks'"
+# Watch paths - only rebuild when these files/directories change
+watchPaths = [
+  "app/**",
+  "service/**", 
+  "stable_audio_tools/**",
+  "requirements.txt",
+  "pyproject.toml",
+  "setup.py",
+  "*.py"
+]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 2
+
+[environments.development]
+variables = { 
+  ENVIRONMENT = "development",
+  LOG_LEVEL = "INFO",
+  PORT = "8000",
+  # Stable Audio Microservice Configuration (Task 2)
+  SERVICE_TOKEN = "dev-stable-audio-token-2024",
+  HUGGING_FACE_HUB_TOKEN = "hf_placeholder_dev_token"
+}
+
+[environments.production]
+variables = { 
+  ENVIRONMENT = "production",
+  LOG_LEVEL = "INFO",
+  PORT = "8000",
+  # Stable Audio Microservice Configuration (Task 2)
+  SERVICE_TOKEN = "prod-stable-audio-token-2024",
+  HUGGING_FACE_HUB_TOKEN = "hf_placeholder_prod_token"
+}
