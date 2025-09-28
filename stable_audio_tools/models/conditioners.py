@@ -165,6 +165,8 @@ class CLAPTextConditioner(Conditioner):
                     self.model.model.text_branch.requires_grad_(False)
                     self.model.model.text_branch.eval()
 
+            except ImportError:
+                raise ImportError("laion_clap is required for CLAPTextConditioner but is not installed. Install with: pip install laion-clap")
             finally:
                 logging.disable(previous_level)
 
@@ -252,6 +254,8 @@ class CLAPAudioConditioner(Conditioner):
                     self.model.model.audio_branch.requires_grad_(False)
                     self.model.model.audio_branch.eval()
 
+            except ImportError:
+                raise ImportError("laion_clap is required for CLAPAudioConditioner but is not installed. Install with: pip install laion-clap")
             finally:
                 logging.disable(previous_level)
 

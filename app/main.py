@@ -177,9 +177,9 @@ def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: in
     global _STABLE_AUDIO_MODEL, _STABLE_AUDIO_MODEL_CONFIG
     
     if _STABLE_AUDIO_MODEL is None or _STABLE_AUDIO_MODEL_CONFIG is None:
-        # Fallback to tone generation if model not loaded
-        logger.warning("stable_audio_model_not_loaded", extra={"prompt": prompt})
-        return _synthesize_tone_wav(duration_seconds, sample_rate_hz)
+        # Fail fast if model not loaded - no fallbacks
+        logger.error("stable_audio_model_not_loaded", extra={"prompt": prompt})
+        raise HTTPException(status_code=503, detail="Stable Audio model not loaded")
     
     try:
         # Determine device
@@ -254,8 +254,8 @@ def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: in
             
     except Exception as e:
         logger.error("sfx_generation_failed", extra={"prompt": prompt, "error": str(e)})
-        # Fallback to tone generation on any error
-        return _synthesize_tone_wav(duration_seconds, sample_rate_hz)
+        # Fail fast - no fallbacks
+        raise HTTPException(status_code=500, detail=f"Audio generation failed: {str(e)}")
 
 
 @app.get("/health")
@@ -267,21 +267,21 @@ def health_check() -> Response:
         "status": "ok",
         "service": "stable-audio",
         "version": "0.1.0",
-        "ready": _SERVICE_READY and model_loaded,  # Only ready if both service and model are available
+        "ready": _SERVICE_READY and model_loaded,
         "model_loaded": model_loaded
     }
     
     if not _SERVICE_READY:
         status_data["message"] = "Service starting, model loading in progress"
         status_data["status"] = "starting"
+        return Response(content=json.dumps(status_data), media_type="application/json", status_code=503)
     elif not model_loaded:
-        status_data["message"] = "Service ready but model not loaded - degraded functionality"
+        status_data["message"] = "Service ready but model not loaded - cannot generate audio"
         status_data["status"] = "degraded"
+        return Response(content=json.dumps(status_data), media_type="application/json", status_code=503)
     else:
         status_data["message"] = "Service ready with Stable Audio model loaded"
-    
-    # Return 200 for basic service availability, but indicate degraded state in response
-    return Response(content=json.dumps(status_data), media_type="application/json", status_code=200)
+        return Response(content=json.dumps(status_data), media_type="application/json", status_code=200)
 
 
 @app.get("/")

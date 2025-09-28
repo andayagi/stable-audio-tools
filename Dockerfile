@@ -21,7 +21,6 @@ RUN pip install --no-cache-dir torch==2.1.0 \
  && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY service ./service
 COPY stable_audio_tools ./stable_audio_tools
 
 # Create non-root user and adjust ownership

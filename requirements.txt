@@ -17,7 +17,6 @@ einops
 einops-exts
 ema-pytorch
 encodec
-laion-clap
 local-attention
 prefigure
 
