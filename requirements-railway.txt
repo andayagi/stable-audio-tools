@@ -1,7 +1,8 @@
+# Core FastAPI dependencies
 fastapi==0.114.2
 uvicorn[standard]==0.31.1
 
-# Minimal runtime deps for inference + API
+# PyTorch and ML dependencies
 torch>=2.2.0
 numpy>=1.23.0,<1.27.0
 safetensors>=0.4.0
@@ -9,7 +10,7 @@ huggingface_hub>=0.25.0
 k-diffusion>=0.1.0
 tqdm>=4.66.0
 
-# Core dependencies from stable-audio-tools package (let pip resolve versions)
+# Stable Audio Tools dependencies
 alias-free-torch
 auraloss
 descript-audio-codec
@@ -20,6 +21,5 @@ encodec
 local-attention
 prefigure
 
-# Flash Attention is installed separately in Dockerfile due to compilation requirements
-
-
+# Optional: Flash Attention (will be installed separately if possible)
+# flash-attn>=2.5.0

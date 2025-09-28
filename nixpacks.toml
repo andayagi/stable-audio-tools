@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python310", "ffmpeg", "libsndfile"]
+
+[phases.install]
+cmds = [
+  "pip install --no-cache-dir --timeout=1800 -r requirements-railway.txt",
+  "pip install --no-cache-dir --timeout=1800 flash-attn>=2.5.0 || echo 'flash-attn installation failed, continuing without it'"
+]
+
+[start]
+cmd = "./start.sh"

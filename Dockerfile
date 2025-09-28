@@ -10,15 +10,39 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Install system dependencies including build tools for flash-attn
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
+    build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PyTorch first to reduce resolver churn and memory spikes
 COPY requirements.txt ./
-RUN pip install --no-cache-dir torch==2.1.0 \
- && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --timeout=1800 torch>=2.2.0
+
+# Install other dependencies, with flash-attn as optional
+RUN pip install --no-cache-dir --timeout=1800 \
+    fastapi==0.114.2 \
+    uvicorn[standard]==0.31.1 \
+    numpy>=1.23.0,<1.27.0 \
+    safetensors>=0.4.0 \
+    huggingface_hub>=0.25.0 \
+    k-diffusion>=0.1.0 \
+    tqdm>=4.66.0 \
+    alias-free-torch \
+    auraloss \
+    descript-audio-codec \
+    einops \
+    einops-exts \
+    ema-pytorch \
+    encodec \
+    local-attention \
+    prefigure
+
+# Try to install flash-attn, but don't fail if it doesn't work
+RUN pip install --no-cache-dir --timeout=1800 flash-attn>=2.5.0 || echo "flash-attn installation failed, continuing without it"
 
 COPY app ./app
 COPY stable_audio_tools ./stable_audio_tools
