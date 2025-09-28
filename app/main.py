@@ -187,12 +187,12 @@ def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: in
         device = next(_STABLE_AUDIO_MODEL.parameters()).device
         
         # Prepare conditioning for the model
-        # Most Stable Audio models expect prompt and timing information
-        conditioning = {
+        # Most Stable Audio models expect prompt and timing information as a list
+        conditioning = [{
             "prompt": prompt,
             "seconds_start": 0,
             "seconds_total": duration_seconds
-        }
+        }]
         
         # Calculate sample size based on model's expected format
         model_sample_rate = _STABLE_AUDIO_MODEL_CONFIG.get("sample_rate", 44100)
