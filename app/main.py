@@ -301,13 +301,14 @@ def generate_audio(payload: GenerateRequest, x_request_id: Optional[str] = Heade
     if requested_format != "wav":
         raise HTTPException(status_code=400, detail="Only 'wav' format is supported in MVP")
 
-    sample_rate = payload.sample_rate_hz or DEFAULT_SAMPLE_RATE_HZ
-    if sample_rate <= 0 or sample_rate > 192000:
-        raise HTTPException(status_code=400, detail="Invalid sample_rate_hz")
+    # Enforce fixed model sample rate only (no resampling)
+    model_rate = _STABLE_AUDIO_MODEL_CONFIG.get("sample_rate", DEFAULT_SAMPLE_RATE_HZ) if _STABLE_AUDIO_MODEL_CONFIG else DEFAULT_SAMPLE_RATE_HZ
+    if payload.sample_rate_hz is not None and payload.sample_rate_hz != model_rate:
+        raise HTTPException(status_code=400, detail=f"Only model sample rate {model_rate}Hz is supported. Requested: {payload.sample_rate_hz}Hz")
 
     # Generate procedural SFX based on prompt (non-silent) and time it
     t0 = time.time_ns()
-    audio_bytes = _synthesize_sfx_bytes(payload.prompt, payload.duration_seconds, sample_rate, payload.seed)
+    audio_bytes = _synthesize_sfx_bytes(payload.prompt, payload.duration_seconds, model_rate, payload.seed)
     gen_ms = int((time.time_ns() - t0) / 1_000_000)
     if x_request_id:
         logger.info("generation_completed", extra={"requestId": x_request_id, "path": "/generate", "status": 200, "durationMs": gen_ms})

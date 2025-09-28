@@ -2,10 +2,7 @@ import numpy as np
 import torch 
 import typing as tp
 import math 
-from torchaudio import transforms as T
 from torch.nn.functional import interpolate
-
-from .utils import prepare_audio
 from .sampling import sample, sample_k, sample_rf
 from ..data.utils import PadCrop
 
@@ -47,7 +44,8 @@ def generate_diffusion_uncond(
         if model.pretransform is not None:
             io_channels = model.pretransform.io_channels
 
-        # Prepare the initial audio for use by the model
+        # Prepare the initial audio for use by the model (lazy import torchaudio dependency)
+        from .utils import prepare_audio
         init_audio = prepare_audio(init_audio, in_sr=in_sr, target_sr=model.sample_rate, target_length=audio_sample_size, target_channels=io_channels, device=device)
 
         # For latent models, encode the initial audio into latents
@@ -171,7 +169,8 @@ def generate_diffusion_cond(
         if model.pretransform is not None:
             io_channels = model.pretransform.io_channels
 
-        # Prepare the initial audio for use by the model
+        # Prepare the initial audio for use by the model (lazy import torchaudio dependency)
+        from .utils import prepare_audio
         init_audio = prepare_audio(init_audio, in_sr=in_sr, target_sr=model.sample_rate, target_length=audio_sample_size, target_channels=io_channels, device=device)
 
         # For latent models, encode the initial audio into latents
@@ -300,7 +299,8 @@ def generate_diffusion_cond_inpaint(
         if model.pretransform is not None:
             io_channels = model.pretransform.io_channels
 
-        # Prepare the initial audio for use by the model
+        # Prepare the initial audio for use by the model (lazy import torchaudio dependency)
+        from .utils import prepare_audio
         init_audio = prepare_audio(init_audio, in_sr=in_sr, target_sr=model.sample_rate, target_length=audio_sample_size, target_channels=io_channels, device=device)
 
         # For latent models, encode the initial audio into latents
