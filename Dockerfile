@@ -4,7 +4,9 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PIP_PREFER_BINARY=1 \
+    PIP_NO_BUILD_ISOLATION=1
 
 WORKDIR /app
 
@@ -13,8 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install PyTorch first to reduce resolver churn and memory spikes
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch==2.1.0 \
+ && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY service ./service

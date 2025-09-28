@@ -2,8 +2,7 @@ fastapi==0.114.2
 uvicorn[standard]==0.31.1
 
 # Minimal runtime deps for inference + API
-torch>=2.6.0
-torchaudio>=2.6.0
+torch==2.1.0
 numpy>=1.23.0,<1.27.0
 safetensors>=0.4.0
 huggingface_hub>=0.25.0

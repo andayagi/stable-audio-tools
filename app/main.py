@@ -10,7 +10,6 @@ import time
 import uuid
 import logging
 import torch
-import torchaudio
 from stable_audio_tools.models.pretrained import get_pretrained_model
 from stable_audio_tools.inference.generation import generate_diffusion_cond
 
@@ -51,7 +50,7 @@ def _configure_logging() -> logging.Logger:
 logger = _configure_logging()
 
 # Optional simple bearer auth for /generate
-SERVICE_TOKEN = os.getenv("service_token", "").strip()
+SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "").strip()
 
 
 @app.middleware("http")
@@ -229,19 +228,8 @@ def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: in
             if audio_np.ndim > 1:
                 audio_np = np.mean(audio_np, axis=0)
             
-            # Resample if necessary
-            if model_sample_rate != sample_rate_hz:
-                # Create resampler
-                resampler = torchaudio.transforms.Resample(
-                    orig_freq=model_sample_rate,
-                    new_freq=sample_rate_hz
-                )
-                audio_tensor = torch.from_numpy(audio_np).unsqueeze(0)
-                audio_tensor = resampler(audio_tensor)
-                audio_np = audio_tensor.squeeze().numpy()
-            
-            # Truncate or pad to exact duration
-            target_samples = int(duration_seconds * sample_rate_hz)
+            # Truncate or pad to exact duration (use model sample rate only)
+            target_samples = int(duration_seconds * model_sample_rate)
             if len(audio_np) > target_samples:
                 audio_np = audio_np[:target_samples]
             elif len(audio_np) < target_samples:
@@ -254,12 +242,12 @@ def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: in
             # Convert to 16-bit PCM
             pcm16 = np.clip(audio_np * 32767.0, -32768, 32767).astype(np.int16)
             
-            # Create WAV file in memory
+            # Create WAV file in memory (use model sample rate)
             buffer = BytesIO()
             with wave.open(buffer, "wb") as wav_file:
                 wav_file.setnchannels(1)  # Mono
                 wav_file.setsampwidth(2)  # 16-bit
-                wav_file.setframerate(sample_rate_hz)
+                wav_file.setframerate(model_sample_rate)
                 wav_file.writeframes(pcm16.tobytes())
             
             return buffer.getvalue()
@@ -272,23 +260,27 @@ def _synthesize_sfx_bytes(prompt: str, duration_seconds: int, sample_rate_hz: in
 
 @app.get("/health")
 def health_check() -> Response:
-    """Health check that always returns 200 but indicates service status."""
+    """Health check that reflects actual service readiness and model availability."""
+    model_loaded = _STABLE_AUDIO_MODEL is not None
+    
     status_data = {
         "status": "ok",
         "service": "stable-audio",
         "version": "0.1.0",
-        "ready": _SERVICE_READY,
-        "model_loaded": _STABLE_AUDIO_MODEL is not None
+        "ready": _SERVICE_READY and model_loaded,  # Only ready if both service and model are available
+        "model_loaded": model_loaded
     }
     
     if not _SERVICE_READY:
         status_data["message"] = "Service starting, model loading in progress"
-    elif _STABLE_AUDIO_MODEL is None:
-        status_data["message"] = "Service ready but model not loaded, using fallback tone generation"
+        status_data["status"] = "starting"
+    elif not model_loaded:
+        status_data["message"] = "Service ready but model not loaded - degraded functionality"
+        status_data["status"] = "degraded"
     else:
         status_data["message"] = "Service ready with Stable Audio model loaded"
     
-    # Always return 200 so Railway doesn't consider service unhealthy during startup
+    # Return 200 for basic service availability, but indicate degraded state in response
     return Response(content=json.dumps(status_data), media_type="application/json", status_code=200)
 
 
