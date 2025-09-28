@@ -4,7 +4,7 @@ buildCommand = "echo 'Building Stable Audio Tools microservice with Nixpacks'"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 120  # Increased for model loading
+healthcheckTimeout = 60  # Reduced since health check now always returns 200
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 

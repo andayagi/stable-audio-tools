@@ -63,15 +63,18 @@ LOG_LEVEL=INFO
    - Service will start with startup script
 
 3. **Verify deployment**:
-   - Check `/health` endpoint
-   - Should return 200 if model loaded successfully
-   - Should return 503 if model failed to load (but service is running)
+   - Check `/health` endpoint (always returns 200)
+   - Check response body for `"model_loaded": true/false`
+   - Check response body for `"status": "healthy"/"degraded"`
 
 ## Health Check Endpoints
 
-- `GET /health` - Returns service status and model loading state
+- `GET /health` - Returns detailed service status and model loading state (always 200 status)
+- `GET /ping` - Simple connectivity check (always returns 200)
 - `GET /` - Basic service info
 - `POST /generate` - Audio generation endpoint (requires authentication)
+
+**Important**: The `/health` endpoint now always returns HTTP 200 for Railway compatibility. Service status is indicated in the response body with fields like `status`, `ready`, and `model_loaded`.
 
 ## Troubleshooting
 

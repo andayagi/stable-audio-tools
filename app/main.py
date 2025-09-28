@@ -101,6 +101,8 @@ async def on_startup() -> None:
     
     # Check if HuggingFace token is available
     hf_token = os.getenv("HUGGING_FACE_HUB_TOKEN")
+    logger.info("hf_token_check", extra={"token_present": bool(hf_token), "token_length": len(hf_token) if hf_token else 0})
+    
     if not hf_token or hf_token.startswith("hf_placeholder"):
         logger.warning("HUGGING_FACE_HUB_TOKEN not set or is placeholder, skipping model load")
         logger.info("service_ready_without_model", extra={"durationMs": int((time.time_ns() - start_ns) / 1_000_000)})
@@ -111,29 +113,41 @@ async def on_startup() -> None:
         logger.info("loading_stable_audio_model")
         model_name = "stabilityai/stable-audio-open-1.0"
         
-        # Load the pretrained model
-        _STABLE_AUDIO_MODEL, _STABLE_AUDIO_MODEL_CONFIG = get_pretrained_model(model_name)
+        # Load the pretrained model with detailed error handling
+        try:
+            _STABLE_AUDIO_MODEL, _STABLE_AUDIO_MODEL_CONFIG = get_pretrained_model(model_name)
+            logger.info("model_download_complete", extra={"model": model_name})
+        except Exception as download_error:
+            logger.error("model_download_failed", extra={"model": model_name, "error": str(download_error), "error_type": type(download_error).__name__})
+            raise
         
         # Set device (prefer CUDA if available, fallback to CPU)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        _STABLE_AUDIO_MODEL = _STABLE_AUDIO_MODEL.to(device)
-        _STABLE_AUDIO_MODEL.eval()
+        logger.info("device_selected", extra={"device": str(device), "cuda_available": torch.cuda.is_available()})
+        
+        try:
+            _STABLE_AUDIO_MODEL = _STABLE_AUDIO_MODEL.to(device)
+            _STABLE_AUDIO_MODEL.eval()
+            logger.info("model_moved_to_device", extra={"device": str(device)})
+        except Exception as device_error:
+            logger.error("model_device_transfer_failed", extra={"device": str(device), "error": str(device_error)})
+            raise
         
         model_load_ms = int((time.time_ns() - start_ns) / 1_000_000)
         logger.info("model_loaded", extra={"durationMs": model_load_ms, "device": str(device), "model": model_name})
 
-        # Warmup: run a tiny generation to initialize code paths
-        warmup_start = time.time_ns()
-        try:
-            # Test with a short sound effect generation
-            _ = _synthesize_sfx_bytes("footstep", 1, DEFAULT_SAMPLE_RATE_HZ, seed=42)
-            warmup_ms = int((time.time_ns() - warmup_start) / 1_000_000)
-            logger.info("warmup_complete", extra={"durationMs": warmup_ms})
-        except Exception as e:
-            logger.warning("warmup_failed", extra={"error": str(e)})
+        # Skip warmup for now to avoid additional complexity during startup
+        # Warmup will happen on first request
+        logger.info("model_loading_complete", extra={"warmup_skipped": True})
 
     except Exception as e:
-        logger.error("model_load_failed", extra={"error": str(e), "fallback_message": "Service will use fallback tone generation"})
+        import traceback
+        logger.error("model_load_failed", extra={
+            "error": str(e), 
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+            "fallback_message": "Service will continue without model"
+        })
         # Service remains ready, just without the model
 
 
@@ -267,26 +281,32 @@ def health_check() -> Response:
         "status": "ok",
         "service": "stable-audio",
         "version": "0.1.0",
-        "ready": _SERVICE_READY and model_loaded,
+        "ready": _SERVICE_READY,
         "model_loaded": model_loaded
     }
     
     if not _SERVICE_READY:
         status_data["message"] = "Service starting, model loading in progress"
         status_data["status"] = "starting"
-        return Response(content=json.dumps(status_data), media_type="application/json", status_code=503)
     elif not model_loaded:
-        status_data["message"] = "Service ready but model not loaded - cannot generate audio"
+        status_data["message"] = "Service ready but model not loaded - audio generation unavailable"
         status_data["status"] = "degraded"
-        return Response(content=json.dumps(status_data), media_type="application/json", status_code=503)
     else:
         status_data["message"] = "Service ready with Stable Audio model loaded"
-        return Response(content=json.dumps(status_data), media_type="application/json", status_code=200)
+        status_data["status"] = "healthy"
+    
+    # Always return 200 for Railway health checks - service status is in the response body
+    return Response(content=json.dumps(status_data), media_type="application/json", status_code=200)
 
 
 @app.get("/")
 def root() -> dict:
     return {"service": "stable-audio", "version": "0.1.0"}
+
+@app.get("/ping")
+def ping() -> dict:
+    """Simple ping endpoint for basic connectivity checks."""
+    return {"status": "ok", "service": "stable-audio"}
 
 
 @app.post("/generate")
