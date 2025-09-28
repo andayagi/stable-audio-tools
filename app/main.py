@@ -133,7 +133,7 @@ async def on_startup() -> None:
             logger.warning("warmup_failed", extra={"error": str(e)})
 
     except Exception as e:
-        logger.warning("model_load_failed", extra={"error": str(e), "message": "Service will use fallback tone generation"})
+        logger.warning("model_load_failed", extra={"error": str(e), "fallback_message": "Service will use fallback tone generation"})
         # Service remains ready, just without the model
 
 

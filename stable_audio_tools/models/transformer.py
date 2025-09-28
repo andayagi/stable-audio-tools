@@ -7,7 +7,11 @@ import torch.nn.functional as F
 from torch import nn, einsum
 from torch.amp import autocast
 from typing import Callable, Literal
-from torch.nn.attention.flex_attention import flex_attention
+try:
+    from torch.nn.attention.flex_attention import flex_attention
+except ImportError:
+    print('torch.nn.attention.flex_attention not available in this PyTorch version, disabling Flex Attention')
+    flex_attention = None
 
 try:
     from flash_attn import flash_attn_func
@@ -20,8 +24,11 @@ except ImportError as e:
 from .utils import compile
 
 try: 
-    torch._dynamo.config.cache_size_limit = 5000
-    flex_attention_compiled = torch.compile(flex_attention, dynamic=False, mode="max-autotune-no-cudagraphs")
+    if flex_attention is not None:
+        torch._dynamo.config.cache_size_limit = 5000
+        flex_attention_compiled = torch.compile(flex_attention, dynamic=False, mode="max-autotune-no-cudagraphs")
+    else:
+        flex_attention_compiled = None
 except:
     flex_attention_compiled = flex_attention
 
@@ -422,10 +429,13 @@ class Attention(nn.Module):
             flex_attention_block_mask = None
             flex_attention_score_mod = None
 
-        if flex_attention_block_mask is not None or flex_attention_score_mod is not None:
+        if (flex_attention_block_mask is not None or flex_attention_score_mod is not None) and flex_attention_compiled is not None:
             out = flex_attention_compiled(q,k,v,
                 block_mask = flex_attention_block_mask,
-                score_mod = flex_attention_score_mod)        
+                score_mod = flex_attention_score_mod)
+        elif flex_attention_block_mask is not None or flex_attention_score_mod is not None:
+            print("FlexAttention requested but not available, falling back to scaled_dot_product_attention")
+            out = F.scaled_dot_product_attention(q, k, v, is_causal = causal)        
         elif flash_attn_available:
             fa_dtype_in = q.dtype
             q, k, v = map(lambda t: rearrange(t, 'b h n d -> b n h d'), (q, k, v))
