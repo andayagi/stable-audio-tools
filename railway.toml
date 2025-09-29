@@ -11,8 +11,7 @@ restartPolicyMaxRetries = 3
 [environments.development.variables]
 ENVIRONMENT = "development"
 LOG_LEVEL = "INFO"
-# HuggingFace token for model access (REQUIRED)
-HUGGING_FACE_HUB_TOKEN = "hf_placeholder_token"
+# HuggingFace token for model access (REQUIRED) - Set in Railway environment variables
 # Service authentication token
 SERVICE_TOKEN = "dev-stable-audio-token-2024"
 # Memory management
@@ -26,8 +25,7 @@ TORCH_HOME = "/tmp/torch_cache"
 [environments.production.variables]
 ENVIRONMENT = "production"
 LOG_LEVEL = "INFO"
-# HuggingFace token for model access (REQUIRED)
-HUGGING_FACE_HUB_TOKEN = "hf_placeholder_token"
+# HuggingFace token for model access (REQUIRED) - Set in Railway environment variables
 # Service authentication token
 SERVICE_TOKEN = "prod-stable-audio-token-2024"
 # Memory management for production
